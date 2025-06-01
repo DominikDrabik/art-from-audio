@@ -57,8 +57,8 @@ The core pipeline of this project can be summarized as follows:
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url> 
-cd <repository-name>
+git clone git@github.com:nikitabutsch/art-from-audio.git
+cd art-from-audio
 ```
 
 ### 2. Create Conda Environment
