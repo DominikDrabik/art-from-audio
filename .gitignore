@@ -53,3 +53,4 @@ lora_output/
 art-from-audio-dataset/
 *.ipynb_checkpoints 
 test_song.mp3 
+test_generated_artwork.png 
