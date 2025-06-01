@@ -1,0 +1,16 @@
+requests
+pillow
+pydub
+python-dotenv
+# pytorch
+torchaudio
+torchvision
+librosa
+datasets
+tqdm
+# From pip section of environment.yml
+git+https://github.com/huggingface/transformers
+diffusers
+safetensors
+accelerate
+peft 
