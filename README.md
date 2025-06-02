@@ -45,7 +45,6 @@ The core pipeline of this project can be summarized as follows:
 ├── environment.yml               # Conda environment specification
 ├── generate_artwork.py           # Script to generate artwork using trained model
 ├── jamendo_collector.py          # Example script for collecting audio-cover pairs
-├── project_proposal.md           # Original project proposal (for historical context, not primary doc)
 ├── README.md                     # This file
 ├── requirements.txt              # pip requirements (for non-Conda users or Colab)
 └── train_lora_diffusion.py       # Script to train the LoRA-conditioned diffusion model
