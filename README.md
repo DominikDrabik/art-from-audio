@@ -106,6 +106,7 @@ The model requires a dataset of audio files and their corresponding cover images
     The `jamendo_collector.py` script is provided as an example of how to download audio-image pairs from the Jamendo music platform.
     *   Requires a Jamendo API key (see script comments for setup).
     *   It downloads audio snippets and cover art, saving them to the correct directories and creating a `metadata.csv`.
+    *   Requires 
     *   You may need to adapt this script or use other methods for your data collection needs. Ensure collected data follows the naming convention.
 
 ## Running the Scripts

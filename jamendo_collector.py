@@ -34,14 +34,14 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from PIL import Image
+from PIL import Image   
 from pydub import AudioSegment
 from dotenv import load_dotenv
 
 # --- Configuration ---
 load_dotenv() # Load environment variables from .env file
 
-API_KEY: Optional[str] = os.getenv("JAMENDO_API_KEY")
+API_KEY: Optional[str] = os.getenv("6acebb65")
 
 if not API_KEY:
     print("ERROR: JAMENDO_API_KEY not found in environment variables.")
