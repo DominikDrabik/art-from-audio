@@ -7,7 +7,6 @@ multi-modal models.
 
 Requirements:
 - A Jamendo API key (set as JAMENDO_API_KEY in a .env file).
-- Python libraries: requests, Pillow, pydub, python-dotenv.
 """
 
 import csv
@@ -15,16 +14,15 @@ import io
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from pydub import AudioSegment
 
 import requests
 from PIL import Image
-from pydub import AudioSegment
 from dotenv import load_dotenv
 
-# --- Configuration ---
 load_dotenv()
 
-API_KEY = "6acebb65"  # Replace with os.getenv("JAMENDO_API_KEY") for production
+API_KEY: Optional[str] = os.getenv("JAMENDO_API_KEY")
 
 if not API_KEY:
     print("ERROR: JAMENDO_API_KEY not found.")
@@ -40,8 +38,8 @@ TARGET_LICENSES_STRING = "by,by-sa,by-nc,by-nc-sa"
 IMAGE_TARGET_WIDTH_PX = 300
 AUDIO_SNIPPET_DURATION_S = 30
 
-TRACKS_PER_API_CALL = 3
-TRACKS_TO_COLLECT_PER_GENRE = 3
+TRACKS_PER_API_CALL = 200
+TRACKS_TO_COLLECT_PER_GENRE = 500
 TARGET_GENRES = ["jazz", "metal", "techno"]
 API_REQUEST_DELAY_S = 1
 

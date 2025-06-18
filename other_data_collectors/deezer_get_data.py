@@ -1,9 +1,3 @@
-"""
-We can't use this file due to the terms of service of Deezer.
-This script is designed to collect audio embeddings and album cover images from Deezer's top tracks in specified genres.
-The deemz terms of service was not clear about the usage of the data, so we decided to not use it. This code works, but we won't use it.
-"""
-
 import os
 import io
 import requests
@@ -32,11 +26,9 @@ EMBED_DIR = "embeddings"
 IMAGE_DIR = "images"
 MANIFEST_CSV = "manifest.csv"
 
-# Ensure output dirs exist
 os.makedirs(EMBED_DIR, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
-# Load model & processor once
 devnull = subprocess.DEVNULL
 ffmpeg_bin = _ff.get_ffmpeg_exe()
 model = ClapModel.from_pretrained(MODEL_ID).eval()
@@ -81,7 +73,6 @@ def get_top_tracks_for_genre(genre_id: int, limit: int):
     resp.raise_for_status()
     return resp.json().get("data", [])
 
-# Main workflow
 manifest = []
 for genre_name, genre_id in GENRE_IDS.items():
     tracks = get_top_tracks_for_genre(genre_id, NUM_TRACKS)
@@ -93,19 +84,15 @@ for genre_name, genre_id in GENRE_IDS.items():
         print("This is the preview url: ", preview)
         cover_url  = tr.get("album", {}).get("cover_xl")
         
-        # Build base filename
         base = f"{sanitize(title)}_{track_id}_{genre_name}"
         
-        # 1) Download & decode audio
         audio_bytes = requests.get(preview, timeout=10).content
         waveform, sr = decode_mp3_to_wave(audio_bytes)
         
-        # 2) Extract embedding
         emb = get_audio_embedding(waveform, sr)
         emb_path = os.path.join(EMBED_DIR, base + ".pt")
         torch.save(emb, emb_path)
         
-        # 3) Download album cover
         img_resp = requests.get(cover_url, timeout=10)
         img_resp.raise_for_status()
         ext = cover_url.split(".")[-1].split("?")[0]
@@ -113,7 +100,6 @@ for genre_name, genre_id in GENRE_IDS.items():
         with open(img_path, "wb") as f:
             f.write(img_resp.content)
         
-        # Record in manifest
         manifest.append({
             "track_id": track_id,
             "title": title,

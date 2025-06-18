@@ -1,175 +1,213 @@
 # Audio-Conditioned Latent Diffusion for Album Cover Artwork Generation
 
-This project was developed as part of the "Multimodal Machine Learning" course (Spring 2025) taught by Prof. Hang Zhao at the Institute for Interdisciplinary Information Sciences (IIIS), Tsinghua University. It explores the generation of album cover artwork conditioned on audio input using latent diffusion models.
+This project, developed for the "Multimodal Machine Learning" course (Spring 2025, IIIS, Tsinghua University), explores generating album cover artwork from audio. It implements and compares several architectures for conditioning a Stable Diffusion model with CLAP audio embeddings, including a baseline, a simple MLP projection, and an advanced MLP projection with optional ControlNet guidance.
 
-The system leverages pre-trained models for audio feature extraction (CLAP) and image generation (Stable Diffusion), connecting them via a fine-tuning process that incorporates an audio embedding projection layer and Low-Rank Adaptation (LoRA) for efficient training.
+## Key Features
 
-## Architecture and Technical Details
-
-The core pipeline of this project can be summarized as follows:
-
-1.  **Audio Input**: An audio file (e.g., `.mp3`) serves as the primary input.
-2.  **Audio Feature Extraction**: The CLAP model (`laion/larger_clap_music_and_speech`) processes the audio to generate a fixed-size (512-dimensional) embedding that captures its semantic and acoustic content. This is handled by `clap_feature_extractor.py`.
-3.  **Conditional Image Generation**: A pre-trained Stable Diffusion v1.5 model (`runwayml/stable-diffusion-v1-5`) is fine-tuned to generate images based on these audio embeddings.
-    *   **Audio Embedding Projection**: A crucial step involves projecting the 512-dimensional CLAP audio embedding to the 768-dimensional space expected by the Stable Diffusion UNet's cross-attention mechanism. This is achieved using a trainable `torch.nn.Linear(512, 768)` layer. Both this projection layer and the LoRA adapters are trained.
-    *   **Low-Rank Adaptation (LoRA)**: To efficiently fine-tune the large Stable Diffusion UNet, LoRA is applied. Specifically, LoRA adapters (with a configurable rank, e.g., 4 or 8) are added to the UNet's attention-related layers (e.g., `to_q`, `to_k`, `to_v`, `to_out.0`, `proj_in`, `proj_out`). Only these LoRA parameters and the audio projection layer's parameters are updated during training, keeping the base Stable Diffusion model weights frozen.
-    *   **Training (`train_lora_diffusion.py`)**:
-        *   The `AudioImageDataset` class prepares (audio embedding, image) pairs for training. Images are resized and normalized.
-        *   Training utilizes mixed precision (preferring `bfloat16` if available, otherwise `float16` on CUDA) for speed and memory efficiency.
-        *   The loss is computed as the MSE between the UNet's predicted noise and the actual noise added to the latents.
-        *   The AdamW optimizer is used.
-        *   Checkpoints containing the trained UNet LoRA weights and the audio projection layer weights are saved periodically (e.g., as `.safetensors` files).
-4.  **Inference (`generate_artwork.py`)**:
-    *   For a new audio input, its CLAP embedding is extracted and then projected using the trained audio projection layer.
-    *   The base Stable Diffusion model components (VAE, UNet, text encoder, tokenizer, scheduler) are loaded. The trained LoRA adapters are applied to the UNet, and their weights (along with the audio projection layer's weights) are loaded from the saved checkpoint.
-    *   The projected audio embedding serves as the conditional input (`prompt_embeds`) to the Stable Diffusion pipeline.
-    *   **Classifier-Free Guidance (CFG)**: This technique is employed to enhance the adherence of the generated image to the conditional audio input.
-        *   **Mechanism**: When CFG is active (controlled by `guidance_scale > 1.0`), the model internally contrasts two predictions at each diffusion step:
-            1.  A *conditional* prediction based on your audio embedding (`prompt_embeds`).
-            2.  An *unconditional* prediction, generated as if there were no specific audio input. In this project, these unconditional embeddings (`negative_prompt_embeds`) are derived from an empty text prompt processed by the Stable Diffusion's text encoder.
-        *   **Guidance Scale**: The `guidance_scale` parameter (default is 7.5 in `generate_artwork.py`) determines how strongly the final generation is "nudged" away from the unconditional prediction towards the audio-conditioned one. Values closer to 1.0 reduce or disable CFG's effect.
-        *   **Embedding Shape Adaptation**: Since the audio embedding is a single vector representing the whole audio, and the unconditional text embeddings have a sequence length (e.g., 77 for CLIP), the audio-derived `prompt_embeds` are repeated along the sequence dimension to match the shape of the `negative_prompt_embeds`. This ensures compatibility for the CFG process and is automatically handled by `generate_artwork.py` when CFG is active.
-    *   The pipeline then generates an image through the reverse diffusion process.
+- **Multiple Architectures**: Train and infer with three different audio projection layers:
+    1.  **Baseline**: A simple linear projection.
+    2.  **Simple MLP**: A two-layer MLP with a ReLU activation.
+    3.  **Advanced MLP**: A more robust MLP with LayerNorm and ReLU.
+- **ControlNet Integration**: The advanced model supports ControlNet, allowing for additional image-based structural guidance (e.g., from Canny edges, depth maps).
+- **Efficient Fine-Tuning**: Uses LoRA (Low-Rank Adaptation) to fine-tune only a fraction of the UNet's parameters, making training accessible.
+- **Flexible Inference**: Generate single images or process entire folders in batches.
+- **Comprehensive Workflow**: Includes scripts for data collection, feature extraction, training, and inference.
 
 ## Project Structure
 
+The repository is organized to separate the different model variants.
+
 ```
 .
-├── art-from-audio-dataset/       # (Gitignored) Root for dataset (user-created)
-│   ├── audio_snippets/           # Input .mp3 audio files (user-provided)
-│   ├── cover_images/             # Corresponding .jpg cover images (user-provided)
-│   └── audio_embeddings/         # (Generated) .pt CLAP embeddings
-├── lora_output/                  # (Gitignored) Saved LoRA & projection weights (generated by training)
-├── .gitignore                    # Specifies intentionally untracked files
-├── clap_feature_extractor.py     # Script to extract CLAP embeddings from audio
-├── environment.yml               # Conda environment specification
-├── generate_artwork.py           # Script to generate artwork using trained model
-├── jamendo_collector.py          # Example script for collecting audio-cover pairs
-├── README.md                     # This file
-├── requirements.txt              # pip requirements (for non-Conda users or Colab)
-└── train_lora_diffusion.py       # Script to train the LoRA-conditioned diffusion model
+├── .env                            # (User-created) For storing API keys
+├── .gitignore
+├── environment.yml                 # Conda environment file
+├── requirements.txt                # Pip requirements file
+│
+├── jamendo_collector_with_ganres.py # Script to download audio/images from Jamendo
+├── extract_and_embed.py            # Alternative script to download and create embeddings
+├── clap_feature_extractor.py       # Script to create embeddings from existing audio
+│
+├── without_mlp_baseline/           # --- Variant 1: Baseline Model ---
+│   ├── train_lora_baseline.py
+│   ├── generate_artwork_baseline.py
+│   └── generate_artwork_folder_baseline.py
+│
+├── with_simple_mlp/                # --- Variant 2: Simple MLP Model ---
+│   ├── train_lora_simple_mlp.py
+│   ├── generate_artwork_simple_mlp.py
+│   └── generate_artwork_folder_simple_mlp.py
+│
+├── train_lora_advanced_mlp.py      # --- Variant 3: Advanced MLP Model ---
+├── generate_artwork_advanced_mlp_controlnet.py
+├── generate_artwork_folder_advanced_mlp_controlnet.py
+│
+├── art-from-audio-dataset/         # (Gitignored) For storing your dataset
+│   ├── audio_snippets/             # .mp3 or .wav audio files
+│   ├── cover_images/               # .jpg or .png image files
+│   └── audio_embeddings/           # (Generated) .pt CLAP embeddings
+│
+└── lora_*_output/                  # (Gitignored) Saved model weights from training
 ```
-
 
 ## Setup
 
 ### 1. Clone the Repository
 
 ```bash
-git clone git@github.com:nikitabutsch/art-from-audio.git
+git clone <your-repo-url>
 cd art-from-audio
 ```
 
-### 2. Create Conda Environment
+### 2. Install Dependencies
 
-It is highly recommended to use Conda for managing Python dependencies.
+It is highly recommended to use a virtual environment.
 
-```bash
-conda env create -f environment.yml
-conda activate art-from-audio
-```
-
-**Alternatively (without Conda):**
-
-If you are not using Conda, you can create a standard Python virtual environment and install packages using `requirements.txt`.
-
-
+**Using pip:**
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cuXXX # Replace cuXXX with your CUDA version e.g. cu118 or cu121
+# On Windows
+venv\Scripts\activate
+# On Linux/macOS
+source venv/bin/activate
+
+# Install PyTorch with your specific CUDA version first for best results
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Install other dependencies
 pip install -r requirements.txt
 ```
-*(The `pytorch` entry in `requirements.txt` is often generic; explicit installation as shown above is more reliable, especially for CUDA.)*
 
-## Data Preparation
+### 3. Set Up API Key (for Data Collection)
 
-The model requires a dataset of audio files and their corresponding cover images.
+If you plan to use the `jamendo_collector_with_ganres.py` script, you need a Jamendo API key.
 
-1.  **Create Dataset Directories**:
-    In the project's root directory, create the necessary folder structure:
-    ```bash
-    mkdir -p art-from-audio-dataset/audio_snippets art-from-audio-dataset/cover_images
+1.  Create a file named `.env` in the project's root directory.
+2.  Add your API key to the file like this:
     ```
-    *(These directories are gitignored, as the dataset is typically large and user-specific).*
+    JAMENDO_API_KEY=your_api_key_here
+    ```
 
-2.  **Add Audio Files**:
-    Place your audio files (e.g., `.mp3`, `.wav`) into the `art-from-audio-dataset/audio_snippets/` directory.
+## Full Workflow
 
-3.  **Add Cover Images**:
-    Place the corresponding cover images (e.g., `.jpg`, `.png`) into the `art-from-audio-dataset/cover_images/` directory.
+### Step 1: Get Data
 
-    **Crucial Naming Convention**: The base filename (without the extension) of an audio file and its corresponding image **must match exactly**.
-    *   Example: `song_01.mp3` must have its cover image as `song_01.jpg`.
+You can either use the provided script to download data or use your own audio/image pairs.
 
-4.  **(Optional) Data Collection with `jamendo_collector.py`**:
-    The `jamendo_collector.py` script is provided as an example of how to download audio-image pairs from the Jamendo music platform.
-    *   Requires a Jamendo API key (see script comments for setup).
-    *   It downloads audio snippets and cover art, saving them to the correct directories and creating a `metadata.csv`.
-    *   Requires 
-    *   You may need to adapt this script or use other methods for your data collection needs. Ensure collected data follows the naming convention.
+**Option A: Download from Jamendo**
+Run the collector script. It will create the `art-from-audio-dataset` directory and populate `audio_snippets` and `cover_images`.
+```bash
+python jamendo_collector_with_ganres.py
+```
+**Prerequisite**: This script uses `pydub` to process audio, which requires **FFmpeg**. Please ensure it is installed and accessible in your system's PATH.
+- **Windows**: Download from the [official FFmpeg site](https://ffmpeg.org/download.html) and add the `bin` folder to your PATH.
+- **Linux (Ubuntu/Debian)**: `sudo apt-get install ffmpeg`
+- **macOS (with Homebrew)**: `brew install ffmpeg`
 
-## Running the Scripts
+*Note: You can configure genres, number of tracks, etc., inside the script.*
 
-### 1. Extract Audio Embeddings (`clap_feature_extractor.py`)
+**Option B: Use Your Own Data**
+1.  Create the directories: `mkdir -p art-from-audio-dataset/audio_snippets art-from-audio-dataset/cover_images`
+2.  Place your audio files (`.mp3`, `.wav`) in `audio_snippets/`.
+3.  Place your image files (`.jpg`, `.png`) in `cover_images/`.
+4.  **Crucially**, ensure audio and image filenames match (e.g., `my_song.mp3` and `my_song.jpg`).
 
-This script processes all audio files in `art-from-audio-dataset/audio_snippets/`, extracts their embeddings using the CLAP model (`laion/larger_clap_music_and_speech` by default), and saves these embeddings as PyTorch tensor files (`.pt`) in `art-from-audio-dataset/audio_embeddings/`.
+### Step 2: Extract Audio Embeddings
+
+Before training, you must process your audio files to create CLAP embeddings.
 
 ```bash
 python clap_feature_extractor.py
 ```
-*   Configuration (model ID, directories) is at the top of the script.
-*   This step is **required** before training.
+This script will read from `audio_snippets/` and save `.pt` embedding files into `audio_embeddings/`. This step is required for all training variants.
 
-### 2. Train the Diffusion Model with LoRA (`train_lora_diffusion.py`)
+### Step 3: Train a Model
 
-This script fine-tunes the Stable Diffusion UNet using the extracted audio embeddings and their corresponding cover images.
+Choose one of the three variants to train. Training scripts are configured by editing the constants at the top of the file (e.g., `LEARNING_RATE`, `BATCH_SIZE`).
+
+- **To train the Advanced MLP model (Recommended):**
+  ```bash
+  python train_lora_advanced_mlp.py
+  ```
+  *Outputs will be saved in `lora_advanced_mlp_output/`.*
+
+- **To train the Simple MLP model:**
+  ```bash
+  python with_simple_mlp/train_lora_simple_mlp.py
+  ```
+  *Outputs will be saved in `lora_mlp_output/`.*
+
+- **To train the Baseline model:**
+  ```bash
+  python without_mlp_baseline/train_lora_baseline.py
+  ```
+  *Outputs will be saved in `lora_output/`.*
+
+### Step 4: Generate Artwork (Inference)
+
+Use the corresponding generation script for your trained model. The **Advanced MLP** scripts are the most feature-rich and are detailed below.
+
+#### **Advanced MLP Model Generation**
+
+These scripts support all features, including ControlNet.
+
+**A. Generate a Single Image**
 
 ```bash
-python train_lora_diffusion.py
+python generate_artwork_advanced_mlp_controlnet.py \
+    --audio_file_path "path/to/your/song.mp3" \
+    --output_image_path "path/to/save/artwork.png" \
+    --checkpoint_path "lora_advanced_mlp_output/final_lora_advanced_mlp_weights.safetensors" \
+    --num_inference_steps 30 \
+    --guidance_scale 7.5 \
+    --mixed_precision_inference fp16
 ```
-Key configurable parameters are located at the top of `train_lora_diffusion.py`:
-*   `MODEL_NAME`: Base Stable Diffusion model (default: `runwayml/stable-diffusion-v1-5`).
-*   `AUDIO_EMBEDDINGS_DIR`, `IMAGE_DIR`, `OUTPUT_DIR`.
-*   `LEARNING_RATE`, `LORA_RANK`, `BATCH_SIZE`, `NUM_TRAIN_EPOCHS`.
-*   `IMAGE_RESOLUTION`, `MIXED_PRECISION` (e.g., "bf16", "fp16", "no").
-*   `SAVE_MODEL_EPOCHS`: Frequency for saving checkpoints.
 
-The script saves the trained UNet LoRA weights and the audio projection layer weights into a single `.safetensors` file in the `lora_output/` directory (e.g., `final_lora_and_projection_weights.safetensors` and epoch-based checkpoints).
+**B. Generate a Single Image with ControlNet**
 
-### 3. Generate Artwork - Inference (`generate_artwork.py`)
+To add structural guidance, provide a condition image and specify a ControlNet model.
 
-This script uses a trained checkpoint (containing the UNet LoRA and audio projection weights) to generate an image conditioned on a new input audio file.
-
-**Example Usage:**
 ```bash
-python generate_artwork.py \
-    --audio_file_path "path/to/your/input_audio.mp3" \
-    --checkpoint_path "lora_output/final_lora_and_projection_weights.safetensors" \
-    --output_image_path "generated_artwork.png" \
-    --lora_rank 4  # Must match the LORA_RANK used during training
+python generate_artwork_advanced_mlp_controlnet.py \
+    --audio_file_path "path/to/your/song.mp3" \
+    --output_image_path "path/to/save/artwork_canny.png" \
+    --checkpoint_path "lora_advanced_mlp_output/final_lora_advanced_mlp_weights.safetensors" \
+    --condition_image_path "path/to/your/canny_edges.jpg" \
+    --controlnet_model_name "lllyasviel/sd-controlnet-canny" \
+    --controlnet_conditioning_scale 0.8
 ```
 
-**Key Command-Line Arguments:**
-*   `--audio_file_path` (required): Path to the input audio file.
-*   `--checkpoint_path`: Path to the `.safetensors` checkpoint file.
-*   `--output_image_path`: Path to save the generated image.
-*   `--lora_rank`: The LoRA rank used during training (important for correctly configuring the LoRA layers before loading weights).
-*   `--base_model_name`: Base Stable Diffusion model (if different from default).
-*   `--clap_model_name`: CLAP model for embedding (if different from default).
-*   `--num_inference_steps`: Number of diffusion steps (default: 50).
-*   `--guidance_scale`: Classifier-Free Guidance scale (default: 7.5). Values `_<= 1.0_` effectively disable CFG or reduce its impact.
-*   `--seed`: Optional random seed for reproducible image generation.
-*   `--mixed_precision_inference`: (Optional, e.g., "fp16", "bf16") Enable mixed precision for inference models on CUDA for potential speedup.
+**C. Generate for a Folder of Audio Files**
 
-## Pre-trained Models from Hugging Face
+This will process all audio files in a directory, saving the outputs to a new folder.
 
-The scripts automatically download the necessary pre-trained models from the Hugging Face Hub:
-*   **CLAP Model**: Default is `laion/larger_clap_music_and_speech`.
-*   **Stable Diffusion Model**: Default is `runwayml/stable-diffusion-v1-5` (including VAE, UNet, text encoder, tokenizer, scheduler).
+```bash
+python generate_artwork_folder_advanced_mlp_controlnet.py \
+    --audio_folder_path "path/to/your/audio_folder" \
+    --checkpoint_path "lora_advanced_mlp_output/final_lora_advanced_mlp_weights.safetensors" \
+    --num_inference_steps 30
+```
+*(You can also add the ControlNet arguments to apply the same condition to all images).*
 
-An active internet connection is required the first time each of these models is downloaded by the scripts. They will be cached locally by the `transformers` and `diffusers` libraries for subsequent runs.
+#### **Advanced Inference Parameters**
+
+| Parameter                       | Description                                                                                      |
+|---------------------------------|--------------------------------------------------------------------------------------------------|
+| `--audio_file_path`             | Path to the input audio file (`.mp3` or `.wav`).                                                 |
+| `--audio_folder_path`           | Path to a folder of audio files for batch generation.                                            |
+| `--output_image_path`           | Path to save the single generated image.                                                         |
+| `--output_folder_path`          | (Optional) Path to save batch-generated images. Defaults to a new folder next to the input.      |
+| `--checkpoint_path`             | **Required.** Path to the trained `.safetensors` model weights.                                  |
+| `--lora_rank`                   | The LoRA rank used during training. **Must match.** (Default: `4`).                              |
+| `--num_inference_steps`         | Number of diffusion steps. (Default: `30`).                                                      |
+| `--guidance_scale`              | Classifier-Free Guidance scale. Higher values adhere more to the audio. (Default: `7.5`).        |
+| `--seed`                        | (Optional) A number for the random seed to ensure reproducible results.                          |
+| `--mixed_precision_inference`   | Use `"fp16"`, `"bf16"`, or `"no"` for inference. Can speed up generation on GPUs. (Default: `"no"`). |
+| `--condition_image_path`        | (Optional) Path to an image for ControlNet conditioning.                                         |
+| `--controlnet_model_name`       | (Optional) Hugging Face name of the ControlNet model. Defaults to Canny if not set.              |
+| `--controlnet_conditioning_scale`| How much to weight the ControlNet conditioning. (Default: `1.0`).                                |
+| `--base_model_name`             | (Optional) Base Stable Diffusion model if not the default.                                       |
+| `--clap_model_name`             | (Optional) CLAP model if not the default.                                                        |
 
 ---
 
-*This README provides a guide to understanding, setting up, and running the project. You may need to adjust paths, parameters, or data collection methods based on your specific requirements and computational resources.* 
+*This README provides a comprehensive guide to setting up and running the project. For more specific details, please refer to the comments and argument parsers within each Python script.*

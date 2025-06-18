@@ -1,8 +1,7 @@
 import os
 import argparse
 from glob import glob
-# Import from the new mlp-specific generation script
-from generate_artwork_mlp import load_models, generate_image_for_audio
+from with_simple_mlp.generate_artwork_simple_mlp import load_models, generate_image_for_audio
 
 def generate_images_from_folder_mlp(args):
     input_dir = args.audio_folder_path
@@ -10,10 +9,9 @@ def generate_images_from_folder_mlp(args):
         print(f"Error: Provided path is not a valid directory: {input_dir}")
         return
 
-    # Create a uniquely named output directory for MLP results
     output_dir_suffix = "_mlp_images"
     output_dir = os.path.join(os.path.dirname(input_dir.rstrip("/\\")), os.path.basename(input_dir.rstrip("/\\")) + output_dir_suffix)
-    if args.output_folder_path: # Allow user to specify output folder
+    if args.output_folder_path: 
         output_dir = args.output_folder_path
     os.makedirs(output_dir, exist_ok=True)
     print(f"Output images will be saved to: {output_dir}")
@@ -26,7 +24,6 @@ def generate_images_from_folder_mlp(args):
     print(f"Found {len(audio_files)} audio files to process.")
 
     print(f"Loading models once for all audio files (using MLP projection)...")
-    # Use mixed_precision_inference from args, convert "no" to None
     mixed_precision_val = args.mixed_precision_inference if args.mixed_precision_inference != "no" else None
     
     models_dict = load_models(
@@ -47,8 +44,6 @@ def generate_images_from_folder_mlp(args):
             generate_image_for_audio(audio_path, output_image_path, models_dict, args)
         except Exception as e:
             print(f"Error processing {audio_path}: {e}")
-            # Optionally, continue to the next file or re-raise
-            # raise e 
 
     print("\nBatch image generation complete.")
 

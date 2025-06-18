@@ -13,7 +13,6 @@ from tqdm.auto import tqdm
 import torch.nn.functional as F
 from typing import Dict, Optional, Tuple, List, Any
 
-# --- Configuration ---
 MODEL_NAME = "runwayml/stable-diffusion-v1-5"
 AUDIO_EMBEDDINGS_DIR = "art-from-audio-dataset/audio_embeddings/"
 IMAGE_DIR = "art-from-audio-dataset/cover_images/"
@@ -23,7 +22,7 @@ IMAGE_EXTENSION = ".jpg"
 LEARNING_RATE = 1e-4
 LORA_RANK = 4
 BATCH_SIZE = 8
-NUM_TRAIN_EPOCHS = 30
+NUM_TRAIN_EPOCHS = 50
 IMAGE_RESOLUTION = 512
 GRADIENT_ACCUMULATION_STEPS = 1
 MIXED_PRECISION = "bf16"
@@ -93,6 +92,7 @@ def save_trained_weights(unet_model, audio_projection_model, save_path):
         print(f"Saved weights to {fallback_path}")
 
 def main():
+    print("Started training :) ")
     print(f"Using Diffusers version: {diffusers_version}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
